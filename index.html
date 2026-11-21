@@ -1,0 +1,989 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snipe Shield Chat</title>
+<style>
+  :root {
+    --bg: #0e0e12;
+    --panel: #18181f;
+    --panel-2: #22222b;
+    --border: #2f2f3a;
+    --text: #ececf1;
+    --muted: #9a9aab;
+    --accent: #9b6bff;
+    --good: #3ecf8e;
+    --warn: #ffb547;
+    --bad: #ff5c6c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+
+  /* ---------- top bar ---------- */
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  header .title { font-weight: 700; margin-right: auto; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); display: inline-block; }
+  .dot.on { background: var(--good); }
+  .status { color: var(--muted); font-size: 13px; font-weight: 400; }
+  .tabs { display: flex; gap: 4px; }
+  .tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #lockBtn.on { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 700; }
+
+  .banner {
+    display: none;
+    padding: 6px 12px;
+    background: var(--bad);
+    color: #fff;
+    font-weight: 700;
+    text-align: center;
+    letter-spacing: .03em;
+  }
+  .banner.show { display: block; }
+
+  /* ---------- chat ---------- */
+  main { flex: 1; min-height: 0; display: flex; }
+  .feed {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px 16px;
+    font-size: var(--fs, 16px);
+    line-height: 1.45;
+  }
+  .msg { padding: 3px 0; word-wrap: break-word; overflow-wrap: anywhere; }
+  .msg .name { font-weight: 700; }
+  .msg .badge {
+    display: inline-block;
+    font-size: .68em;
+    font-weight: 700;
+    padding: 0 4px;
+    margin-right: 4px;
+    border-radius: 4px;
+    vertical-align: .12em;
+    color: #fff;
+  }
+  .badge.b-broadcaster { background: #e91916; }
+  .badge.b-mod { background: #00ad03; }
+  .badge.b-vip { background: #e005b9; }
+  .badge.b-sub { background: #6441a5; }
+  .msg img.emote { height: 1.6em; vertical-align: middle; margin: -.3em 0; }
+  .msg.action .text { font-style: italic; }
+  .system { color: var(--muted); font-style: italic; font-size: .9em; padding: 4px 0; }
+  .empty {
+    color: var(--muted);
+    text-align: center;
+    margin-top: 15vh;
+    padding: 0 16px;
+    font-size: 15px;
+  }
+
+  /* mod view rows */
+  .mrow {
+    display: grid;
+    grid-template-columns: 92px 1fr;
+    gap: 10px;
+    align-items: start;
+    padding: 5px 6px;
+    border-radius: 6px;
+    border-left: 4px solid transparent;
+  }
+  .mrow + .mrow { margin-top: 2px; }
+  .mrow .state { font-size: 12px; font-weight: 700; padding-top: .25em; }
+  .mrow.pending { border-left-color: var(--warn); background: rgba(255,181,71,.06); }
+  .mrow.pending .state { color: var(--warn); }
+  .mrow.shown { border-left-color: var(--good); }
+  .mrow.shown .state { color: var(--good); }
+  .mrow.filtered { border-left-color: var(--muted); opacity: .75; }
+  .mrow.filtered .state { color: var(--muted); }
+  .mrow.deleted { border-left-color: var(--bad); opacity: .55; }
+  .mrow.deleted .state { color: var(--bad); }
+  .mrow.deleted .text { text-decoration: line-through; }
+  .reason { color: var(--muted); font-size: .8em; margin-left: 6px; }
+  .bar { height: 3px; background: var(--border); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--warn); }
+
+  .modhelp {
+    font-size: 13px;
+    color: var(--muted);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+  }
+
+  /* ---------- settings drawer ---------- */
+  #settings {
+    width: min(420px, 100%);
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 14px 16px 40px;
+    display: none;
+  }
+  #settings.open { display: block; }
+  @media (max-width: 700px) {
+    #settings.open { position: fixed; inset: 0; width: 100%; z-index: 10; border-left: 0; }
+  }
+  #settings h2 { font-size: 18px; margin: 0 0 4px; }
+  #settings h3 { font-size: 14px; margin: 20px 0 6px; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
+  .field { margin: 10px 0; }
+  .field label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+  .field .hint { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+  .field input[type=text], .field input[type=number], .field select, .field textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .field textarea { min-height: 110px; resize: vertical; font-size: 13.5px; }
+  .check { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; font-size: 14px; }
+  .check input { margin-top: 3px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .copied { color: var(--good); font-size: 13px; margin-left: 6px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="title">
+    🛡️ Snipe Shield
+    <span class="dot" id="connDot"></span>
+    <span class="status" id="statusText">Not connected</span>
+  </div>
+  <div class="tabs">
+    <button id="tabStreamer" class="active">Streamer view</button>
+    <button id="tabMod">Mod view</button>
+  </div>
+  <button id="lockBtn" title="Hotkey: L">🔒 Lockdown</button>
+  <button id="settingsBtn">⚙️ Settings</button>
+</header>
+<div class="banner" id="lockBanner">LOCKDOWN — only mods / VIPs / allowed users are getting through</div>
+
+<main>
+  <div class="feed" id="feed"></div>
+
+  <aside id="settings">
+    <h2>Settings</h2>
+    <div class="status">Saved automatically in this browser.</div>
+
+    <h3>Channel</h3>
+    <div class="field">
+      <label for="sChannel">Twitch channel name</label>
+      <input type="text" id="sChannel" placeholder="e.g. yourname   (type demo to test)">
+      <div class="hint">Type <b>demo</b> to try it with fake chat.</div>
+    </div>
+    <div class="row"><button class="primary" id="connectBtn">Connect</button></div>
+
+    <h3>Protection</h3>
+    <div class="field">
+      <label for="sDelay">Chat delay (seconds)</label>
+      <input type="number" id="sDelay" min="0" max="600" step="1">
+      <div class="hint">How long a message is held before the streamer sees it. This is the window mods have to delete a spoiler in Twitch chat. 15–30 is a good range.</div>
+    </div>
+    <div class="field">
+      <label for="sMode">Who gets through</label>
+      <select id="sMode">
+        <option value="everyone">Everyone (after delay + filter)</option>
+        <option value="subs">Subscribers, VIPs &amp; mods only</option>
+        <option value="trusted">Only mods, VIPs &amp; allowed users</option>
+      </select>
+    </div>
+    <label class="check"><input type="checkbox" id="sTrustBypass"> <span>Mods, VIPs &amp; allowed users skip the delay and filter</span></label>
+    <label class="check"><input type="checkbox" id="sCoords"> <span>Hide messages that look like coordinates (e.g. <code>1200, -340</code> or <code>x: 500</code>)</span></label>
+    <label class="check"><input type="checkbox" id="sLinks"> <span>Hide links (stops people linking other players' streams)</span></label>
+    <label class="check"><input type="checkbox" id="sShowCount"> <span>Show how many messages were hidden <br><small class="status">Off by default: a sudden jump in hidden messages is itself a hint that someone is close.</small></span></label>
+
+    <h3>Spoiler words</h3>
+    <div class="field">
+      <label for="sWords">Hide messages containing these words</label>
+      <textarea id="sWords"></textarea>
+      <div class="hint">One per line. Also catches longer forms (<i>raid</i> → raiding, raider), sneaky spellings like <i>b3h1nd</i> or <i>behiiind</i>, and emojis like 👀.</div>
+    </div>
+    <div class="row"><button id="resetWords">Reset to default word list</button></div>
+    <div class="field">
+      <label for="sNames">Other players &amp; place names</label>
+      <textarea id="sNames" placeholder="One per line, e.g.&#10;OtherStreamer&#10;their nickname&#10;the vault"></textarea>
+      <div class="hint">Names of other people on the SMP, their bases, landmarks, etc. Any message mentioning them is hidden.</div>
+    </div>
+
+    <h3>People</h3>
+    <div class="field">
+      <label for="sAllow">Always-allowed users</label>
+      <textarea id="sAllow" placeholder="Twitch usernames, one per line"></textarea>
+      <div class="hint">Treated like mods (e.g. friends, editors).</div>
+    </div>
+    <div class="field">
+      <label for="sBlock">Always-hidden users</label>
+      <textarea id="sBlock" placeholder="Twitch usernames, one per line"></textarea>
+      <div class="hint">Known snipers / alt accounts. Their messages never show.</div>
+    </div>
+
+    <h3>Look</h3>
+    <div class="field">
+      <label for="sFont">Text size: <span id="fontVal"></span>px</label>
+      <input type="range" id="sFont" min="12" max="32" step="1" style="width:100%">
+    </div>
+
+    <h3>Share</h3>
+    <div class="row">
+      <button id="copyStreamer">Copy streamer link</button>
+      <button id="copyMod">Copy mod link</button>
+      <span class="copied" id="copiedMsg"></span>
+    </div>
+    <div class="hint status" style="margin-top:6px">The links include your channel, delay, mode and word lists so mods see exactly the same timing as you. The streamer link also works as an OBS custom browser dock.</div>
+  </aside>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  // ------------------------------------------------------------------
+  // Defaults
+  // ------------------------------------------------------------------
+  const DEFAULT_WORDS = [
+    // positions / directions
+    'behind', 'left', 'right', 'north', 'south', 'east', 'west',
+    'turn around', 'look up', 'look down', 'above you', 'below you', 'under you',
+    'near', 'nearby', 'getting close', 'so close', 'youre close', 'you are close',
+    'warm', 'warmer', 'hot', 'hotter', 'cold', 'colder', 'freezing',
+    // threats
+    'coming', 'incoming', 'raid', 'jump', 'ambush', 'trap', 'spotted', 'following',
+    'hunting', 'tracking', 'tracker', 'compass', 'sniper', 'snipe',
+    // places / bases
+    'base', 'stash', 'chest', 'vault', 'coords', 'coordinates', 'tunnel', 'portal',
+    'nether', 'bunker', 'underground', 'dig down', 'mine down',
+    // other POVs
+    'pov', 'other stream', 'his stream', 'her stream', 'their stream', 'watching',
+    // emoji hints
+    '👀', '⬅', '➡', '⬆', '⬇', '↩', '↪', '🔥', '🥶', '🧊', '⚠', '🚨',
+  ];
+
+  const DEFAULTS = {
+    channel: '',
+    delay: 20,
+    mode: 'everyone',
+    trustBypass: true,
+    blockCoords: true,
+    blockLinks: true,
+    showHiddenCount: false,
+    words: DEFAULT_WORDS.join('\n'),
+    names: '',
+    allow: '',
+    block: '',
+    fontSize: 16,
+    lockdown: false,
+  };
+
+  const STORE_KEY = 'snipe-shield-settings-v1';
+
+  // ------------------------------------------------------------------
+  // Settings (localStorage + URL overrides)
+  // ------------------------------------------------------------------
+  function loadSettings() {
+    let s = { ...DEFAULTS };
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (raw) s = { ...s, ...JSON.parse(raw) };
+    } catch (e) { /* storage blocked: use defaults */ }
+
+    const p = new URLSearchParams(location.search);
+    if (p.has('channel')) s.channel = p.get('channel');
+    if (p.has('delay')) s.delay = clampDelay(p.get('delay'));
+    if (p.has('mode')) s.mode = p.get('mode');
+    if (p.has('bypass')) s.trustBypass = p.get('bypass') !== '0';
+    if (p.has('coords')) s.blockCoords = p.get('coords') !== '0';
+    if (p.has('links')) s.blockLinks = p.get('links') !== '0';
+    if (p.has('words')) s.words = p.get('words');
+    if (p.has('names')) s.names = p.get('names');
+    if (p.has('allow')) s.allow = p.get('allow');
+    if (p.has('block')) s.block = p.get('block');
+    if (p.has('font')) s.fontSize = +p.get('font') || DEFAULTS.fontSize;
+    return s;
+  }
+
+  function saveSettings() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
+  }
+
+  function clampDelay(v) {
+    const n = Math.round(Number(v));
+    if (!isFinite(n) || n < 0) return 0;
+    return Math.min(n, 600);
+  }
+
+  let settings = loadSettings();
+  const urlParams = new URLSearchParams(location.search);
+  let view = urlParams.get('view') === 'mod' ? 'mod' : 'streamer';
+
+  // ------------------------------------------------------------------
+  // Spoiler filter
+  // ------------------------------------------------------------------
+  const LEET = { '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't', '@': 'a', '$': 's', '!': 'i', '|': 'i' };
+
+  // lowercase, strip accents, undo leetspeak, drop punctuation, squash repeated letters
+  function normalize(str) {
+    return str
+      .toLowerCase()
+      .normalize('NFKD').replace(/[̀-ͯ]/g, '')
+      .replace(/[013457@$!|]/g, c => LEET[c])
+      .replace(/[^a-z]+/g, ' ')
+      .replace(/([a-z])\1+/g, '$1')
+      .trim();
+  }
+
+  function parseList(text) {
+    return String(text || '')
+      .split(/[\n,]+/)
+      .map(t => t.trim())
+      .filter(Boolean);
+  }
+
+  let compiledTerms = [];
+  let allowSet = new Set();
+  let blockSet = new Set();
+
+  function compileFilters() {
+    const terms = [...parseList(settings.words), ...parseList(settings.names)];
+    compiledTerms = terms.map(raw => {
+      const n = normalize(raw);
+      if (!n) return { raw, type: 'raw', needle: raw.toLowerCase() }; // emoji / symbols
+      return { raw, type: 'word', needle: n };
+    });
+    allowSet = new Set(parseList(settings.allow).map(u => u.toLowerCase().replace(/^@/, '')));
+    blockSet = new Set(parseList(settings.block).map(u => u.toLowerCase().replace(/^@/, '')));
+  }
+
+  const LINK_RE = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|gg|tv|io|me|ly|be|co|live)\b)/i;
+
+  function looksLikeCoords(text) {
+    // ignore money-style numbers like 10,000 or 1,250,000
+    const t = text.replace(/\b\d{1,3}(?:,\d{3})+\b/g, ' N ');
+    return (
+      /-?\d{2,}\s*[,\/|;]\s*-?\d{2,}/.test(t) ||           // 1200, -340   |  1200/340
+      /-?\d{2,}\s+-?\d{1,3}\s+-?\d{2,}/.test(t) ||          // 1200 64 -340
+      /\b[xz]\s*[:=]?\s*-?\d{2,}/i.test(t)                  // x: 1200   z=-340
+    );
+  }
+
+  // Returns a reason string if the message should be hidden, or '' if it's fine.
+  function spoilerReason(text) {
+    if (settings.blockCoords && looksLikeCoords(text)) return 'coordinates';
+    if (settings.blockLinks && LINK_RE.test(text)) return 'link';
+
+    const lower = text.toLowerCase();
+    // join spaced-out letters: "b e h i n d" -> "behind"
+    const norm = ' ' + normalize(text).replace(/\b[a-z](?: [a-z]\b)+/g, w => w.replace(/ /g, ''));
+    for (const t of compiledTerms) {
+      if (t.type === 'raw') {
+        if (lower.includes(t.needle)) return 'word: ' + t.raw;
+      } else {
+        // match at the start of a word, so "raid" also catches "raiding"
+        if (norm.includes(' ' + t.needle)) return 'word: ' + t.raw;
+      }
+    }
+    return '';
+  }
+
+  // ------------------------------------------------------------------
+  // Message store
+  // ------------------------------------------------------------------
+  const MAX_KEEP = 400;
+  const messages = [];           // all messages (newest last)
+  const byId = new Map();
+  let hiddenCount = 0;
+  let seq = 0;
+
+  function isTrusted(m) {
+    return m.badges.broadcaster || m.badges.mod || m.badges.vip || allowSet.has(m.login);
+  }
+
+  function passesMode(m) {
+    if (isTrusted(m)) return true;
+    if (settings.lockdown) return false;
+    if (settings.mode === 'trusted') return false;
+    if (settings.mode === 'subs') return m.badges.sub;
+    return true;
+  }
+
+  function addMessage(m) {
+    m.receivedAt = Date.now();
+    m.releaseAt = m.receivedAt + settings.delay * 1000;
+
+    if (blockSet.has(m.login)) {
+      setStatus(m, 'filtered', 'blocked user');
+    } else if (isTrusted(m) && settings.trustBypass) {
+      setStatus(m, 'shown', 'trusted');
+    } else {
+      const reason = spoilerReason(m.text);
+      if (reason) setStatus(m, 'filtered', reason);
+      else if (!passesMode(m)) setStatus(m, 'filtered', settings.lockdown ? 'lockdown' : 'not allowed in this mode');
+      else if (settings.delay === 0) setStatus(m, 'shown', '');
+      else m.status = 'pending';
+    }
+
+    messages.push(m);
+    byId.set(m.id, m);
+    while (messages.length > MAX_KEEP) {
+      const old = messages.shift();
+      byId.delete(old.id);
+      if (old.modEl) old.modEl.remove();
+    }
+    renderModRow(m);
+    if (m.status === 'shown') renderStreamerMsg(m);
+    updateStatusLine();
+  }
+
+  function setStatus(m, status, reason) {
+    m.status = status;
+    m.reason = reason || '';
+    if (status === 'filtered') hiddenCount++;
+  }
+
+  // Called by the timer: release pending messages whose delay is over.
+  function tick() {
+    const now = Date.now();
+    for (const m of messages) {
+      if (m.status !== 'pending') continue;
+      if (now >= m.releaseAt) {
+        if (!passesMode(m)) setStatus(m, 'filtered', settings.lockdown ? 'lockdown' : 'not allowed in this mode');
+        else setStatus(m, 'shown', '');
+        renderModRow(m);
+        if (m.status === 'shown') renderStreamerMsg(m);
+      } else if (m.barEl) {
+        const left = Math.max(0, m.releaseAt - now);
+        const total = Math.max(1, m.releaseAt - m.receivedAt);
+        m.barEl.style.width = (100 * left / total) + '%';
+        m.stateEl.textContent = 'in ' + Math.ceil(left / 1000) + 's';
+      }
+    }
+    updateStatusLine();
+  }
+
+  // A mod deleted a message / timed out / banned someone in Twitch.
+  function markDeleted(m, why) {
+    if (!m || m.status === 'deleted') return;
+    const wasShown = m.status === 'shown';
+    m.status = 'deleted';
+    m.reason = why;
+    if (wasShown && m.streamEl) m.streamEl.remove();
+    renderModRow(m);
+  }
+
+  // ------------------------------------------------------------------
+  // Rendering
+  // ------------------------------------------------------------------
+  const feed = document.getElementById('feed');
+  const streamerList = document.createElement('div');
+  const modList = document.createElement('div');
+  const modHelp = document.createElement('div');
+  modHelp.className = 'modhelp';
+  modHelp.innerHTML =
+    '<b>Mod view.</b> Every message in chat, and what happens to it. ' +
+    '<span style="color:var(--warn)">Yellow</span> = waiting, the streamer will see it when the timer runs out. ' +
+    'If it\'s a spoiler, <b>delete it (or time the person out) in Twitch chat</b> before the timer ends and the streamer will never see it. ' +
+    '<span style="color:var(--good)">Green</span> = streamer saw it. Grey = auto-hidden by the filter. ' +
+    '<span style="color:var(--bad)">Red</span> = deleted by a mod.';
+  const emptyNote = document.createElement('div');
+  emptyNote.className = 'empty';
+
+  function esc(s) {
+    return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // Twitch emote tag: "25:0-4,12-16/1902:6-10" (positions are by character)
+  function renderText(text, emotesTag) {
+    const chars = Array.from(text);
+    const repl = [];
+    if (emotesTag) {
+      for (const part of emotesTag.split('/')) {
+        const [id, ranges] = part.split(':');
+        if (!id || !ranges || !/^[\w-]+$/.test(id)) continue;
+        for (const r of ranges.split(',')) {
+          const [a, b] = r.split('-').map(Number);
+          if (Number.isInteger(a) && Number.isInteger(b) && b >= a && b < chars.length) repl.push({ a, b, id });
+        }
+      }
+      repl.sort((x, y) => x.a - y.a);
+    }
+    let out = '';
+    let i = 0;
+    for (const r of repl) {
+      if (r.a < i) continue;
+      out += esc(chars.slice(i, r.a).join(''));
+      const name = esc(chars.slice(r.a, r.b + 1).join(''));
+      out += `<img class="emote" alt="${name}" title="${name}" src="https://static-cdn.jtvnw.net/emoticons/v2/${r.id}/default/dark/1.0">`;
+      i = r.b + 1;
+    }
+    out += esc(chars.slice(i).join(''));
+    return out;
+  }
+
+  const FALLBACK_COLORS = ['#ff7a7a', '#7ab8ff', '#7affa1', '#ffd27a', '#d27aff', '#7afff0', '#ff9ef0', '#b6ff7a'];
+  function nameColor(m) {
+    if (m.color && /^#[0-9a-f]{6}$/i.test(m.color)) return m.color;
+    let h = 0;
+    for (const c of m.login) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    return FALLBACK_COLORS[h % FALLBACK_COLORS.length];
+  }
+
+  function msgHTML(m) {
+    let badges = '';
+    if (m.badges.broadcaster) badges += '<span class="badge b-broadcaster">LIVE</span>';
+    if (m.badges.mod) badges += '<span class="badge b-mod">MOD</span>';
+    if (m.badges.vip) badges += '<span class="badge b-vip">VIP</span>';
+    if (m.badges.sub) badges += '<span class="badge b-sub">SUB</span>';
+    const sep = m.action ? ' ' : ': ';
+    return `${badges}<span class="name" style="color:${nameColor(m)}">${esc(m.name)}</span>${sep}<span class="text">${renderText(m.text, m.emotes)}</span>`;
+  }
+
+  function nearBottom() {
+    return feed.scrollHeight - feed.scrollTop - feed.clientHeight < 80;
+  }
+
+  function stickScroll(fn) {
+    const stick = nearBottom();
+    fn();
+    if (stick) feed.scrollTop = feed.scrollHeight;
+  }
+
+  function renderStreamerMsg(m) {
+    const el = document.createElement('div');
+    el.className = 'msg' + (m.action ? ' action' : '');
+    el.innerHTML = msgHTML(m);
+    m.streamEl = el;
+    if (view === 'streamer') {
+      stickScroll(() => { streamerList.appendChild(el); trimList(streamerList, 200); });
+      refreshEmpty();
+    } else {
+      streamerList.appendChild(el);
+      trimList(streamerList, 200);
+    }
+  }
+
+  function trimList(list, max) {
+    while (list.children.length > max) list.firstChild.remove();
+  }
+
+  function renderModRow(m) {
+    let row = m.modEl;
+    const isNew = !row;
+    if (isNew) {
+      row = document.createElement('div');
+      m.modEl = row;
+    }
+    row.className = 'mrow ' + m.status;
+    let state;
+    if (m.status === 'pending') {
+      const left = Math.max(0, m.releaseAt - Date.now());
+      state = 'in ' + Math.ceil(left / 1000) + 's';
+    } else if (m.status === 'shown') state = 'SHOWN';
+    else if (m.status === 'filtered') state = 'HIDDEN';
+    else state = 'DELETED';
+
+    const reason = m.reason ? `<span class="reason">(${esc(m.reason)})</span>` : '';
+    row.innerHTML =
+      `<div class="state">${state}</div>` +
+      `<div><div class="msg${m.action ? ' action' : ''}">${msgHTML(m)}${reason}</div>` +
+      (m.status === 'pending' ? '<div class="bar"><i style="width:100%"></i></div>' : '') +
+      `</div>`;
+    m.stateEl = row.querySelector('.state');
+    m.barEl = row.querySelector('.bar > i');
+
+    if (isNew) {
+      if (view === 'mod') {
+        stickScroll(() => modList.appendChild(row));
+        refreshEmpty();
+      } else {
+        modList.appendChild(row);
+      }
+    }
+  }
+
+  function addSystem(text) {
+    for (const list of [streamerList, modList]) {
+      const el = document.createElement('div');
+      el.className = 'system';
+      el.textContent = text;
+      list.appendChild(el);
+    }
+    feed.scrollTop = feed.scrollHeight;
+    refreshEmpty();
+  }
+
+  function refreshEmpty() {
+    const list = view === 'mod' ? modList : streamerList;
+    const hasMsgs = list.querySelector('.msg, .mrow');
+    if (hasMsgs) { emptyNote.remove(); return; }
+    if (!settings.channel) {
+      emptyNote.innerHTML = 'Open <b>⚙️ Settings</b>, type your Twitch channel name and press <b>Connect</b>.<br><br>Type <b>demo</b> as the channel to try it with fake chat.';
+    } else if (view === 'streamer') {
+      emptyNote.textContent = `Waiting for safe messages… (${settings.delay}s delay)`;
+    } else {
+      emptyNote.textContent = 'Waiting for chat messages…';
+    }
+    if (!emptyNote.isConnected) feed.appendChild(emptyNote);
+  }
+
+  function showView(v) {
+    view = v;
+    document.getElementById('tabStreamer').classList.toggle('active', v === 'streamer');
+    document.getElementById('tabMod').classList.toggle('active', v === 'mod');
+    feed.innerHTML = '';
+    if (v === 'mod') { feed.appendChild(modHelp); feed.appendChild(modList); }
+    else feed.appendChild(streamerList);
+    refreshEmpty();
+    feed.scrollTop = feed.scrollHeight;
+    updateStatusLine();
+  }
+
+  let connState = 'off';
+  function updateStatusLine() {
+    const dot = document.getElementById('connDot');
+    const st = document.getElementById('statusText');
+    dot.classList.toggle('on', connState === 'on');
+    let text;
+    if (connState === 'on') text = `#${settings.channel} · ${settings.delay}s delay`;
+    else if (connState === 'connecting') text = 'Connecting…';
+    else text = 'Not connected';
+    if (connState === 'on') {
+      if (view === 'mod') {
+        const pending = messages.filter(m => m.status === 'pending').length;
+        text += ` · ${pending} waiting · ${hiddenCount} auto-hidden`;
+      } else if (settings.showHiddenCount) {
+        text += ` · ${hiddenCount} hidden`;
+      }
+    }
+    if (st.textContent !== text) st.textContent = text;
+  }
+
+  // ------------------------------------------------------------------
+  // Twitch chat connection (read-only, no login needed)
+  // ------------------------------------------------------------------
+  let ws = null;
+  let demoTimer = null;
+  let reconnectTimer = null;
+  let backoff = 1000;
+  let connectGen = 0;
+
+  function parseTagValue(v) {
+    return v.replace(/\\(.)/g, (_, c) => ({ s: ' ', ':': ';', '\\': '\\', r: '\r', n: '\n' }[c] ?? c));
+  }
+
+  function parseIrc(line) {
+    const msg = { tags: {}, prefix: '', command: '', params: [] };
+    let rest = line;
+    if (rest[0] === '@') {
+      const sp = rest.indexOf(' ');
+      for (const kv of rest.slice(1, sp).split(';')) {
+        const eq = kv.indexOf('=');
+        if (eq === -1) msg.tags[kv] = '';
+        else msg.tags[kv.slice(0, eq)] = parseTagValue(kv.slice(eq + 1));
+      }
+      rest = rest.slice(sp + 1);
+    }
+    if (rest[0] === ':') {
+      const sp = rest.indexOf(' ');
+      msg.prefix = rest.slice(1, sp);
+      rest = rest.slice(sp + 1);
+    }
+    let trailing = null;
+    const ti = rest.indexOf(' :');
+    if (ti !== -1) { trailing = rest.slice(ti + 2); rest = rest.slice(0, ti); }
+    const parts = rest.split(' ').filter(Boolean);
+    msg.command = parts.shift() || '';
+    msg.params = parts;
+    if (trailing !== null) msg.params.push(trailing);
+    return msg;
+  }
+
+  function handleLine(line) {
+    if (!line) return;
+    const msg = parseIrc(line);
+    switch (msg.command) {
+      case 'PING':
+        if (ws && ws.readyState === 1) ws.send('PONG :' + (msg.params[0] || 'tmi.twitch.tv'));
+        break;
+      case '001':
+        backoff = 1000;
+        break;
+      case 'JOIN':
+        if (connState !== 'on') {
+          connState = 'on';
+          addSystem(`Connected to #${settings.channel}. Messages appear after ${settings.delay}s unless a mod deletes them.`);
+          updateStatusLine();
+        }
+        break;
+      case 'PRIVMSG': {
+        const t = msg.tags;
+        let text = msg.params[1] || '';
+        let action = false;
+        const m = text.match(/^\u0001ACTION (.*)\u0001$/);
+        if (m) { text = m[1]; action = true; }
+        const badgeStr = t.badges || '';
+        const login = (msg.prefix.split('!')[0] || '').toLowerCase();
+        addMessage({
+          id: t.id || ('local-' + (++seq)),
+          userId: t['user-id'] || login,
+          login,
+          name: t['display-name'] || login,
+          color: t.color || '',
+          emotes: t.emotes || '',
+          action,
+          text,
+          badges: {
+            broadcaster: /(^|,)broadcaster\//.test(badgeStr),
+            mod: t.mod === '1' || /(^|,)moderator\//.test(badgeStr),
+            vip: t.vip === '1' || /(^|,)vip\//.test(badgeStr),
+            sub: t.subscriber === '1' || /(^|,)(subscriber|founder)\//.test(badgeStr),
+          },
+        });
+        break;
+      }
+      case 'CLEARMSG':
+        markDeleted(byId.get(msg.tags['target-msg-id']), 'deleted by mod');
+        break;
+      case 'CLEARCHAT': {
+        const target = msg.tags['target-user-id'];
+        const targetLogin = (msg.params[1] || '').toLowerCase();
+        const why = !targetLogin ? 'chat cleared' : (msg.tags['ban-duration'] ? 'user timed out' : 'user banned');
+        for (const m of messages) {
+          if (!targetLogin || m.userId === target || m.login === targetLogin) markDeleted(m, why);
+        }
+        break;
+      }
+      case 'RECONNECT':
+        if (ws) ws.close();
+        break;
+      case 'NOTICE':
+        if (msg.params[1]) addSystem('Twitch: ' + msg.params[1]);
+        break;
+    }
+  }
+
+  function disconnect() {
+    connectGen++;
+    clearTimeout(reconnectTimer);
+    clearInterval(demoTimer);
+    demoTimer = null;
+    if (ws) { ws.onclose = null; ws.close(); ws = null; }
+    connState = 'off';
+    updateStatusLine();
+  }
+
+  function connect() {
+    disconnect();
+    const channel = settings.channel.trim().toLowerCase().replace(/^#/, '').replace(/^.*twitch\.tv\//, '').replace(/[^a-z0-9_]/g, '');
+    if (!channel) { refreshEmpty(); return; }
+    settings.channel = channel;
+    document.getElementById('sChannel').value = channel;
+    saveSettings();
+
+    if (channel === 'demo') { startDemo(); return; }
+
+    const gen = connectGen;
+    connState = 'connecting';
+    updateStatusLine();
+    const sock = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+    ws = sock;
+    sock.onopen = () => {
+      sock.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
+      sock.send('PASS SCHMOOPIIE');
+      sock.send('NICK justinfan' + Math.floor(10000 + Math.random() * 80000));
+      sock.send('JOIN #' + channel);
+    };
+    sock.onmessage = ev => String(ev.data).split('\r\n').forEach(handleLine);
+    sock.onclose = () => {
+      if (gen !== connectGen) return;
+      const wasOn = connState === 'on';
+      connState = 'connecting';
+      updateStatusLine();
+      if (wasOn) addSystem('Lost connection to Twitch, reconnecting…');
+      reconnectTimer = setTimeout(() => { if (gen === connectGen) connect(); }, backoff);
+      backoff = Math.min(backoff * 2, 30000);
+    };
+  }
+
+  // ------------------------------------------------------------------
+  // Demo mode: fake chat so you can see how it behaves
+  // ------------------------------------------------------------------
+  function startDemo() {
+    connState = 'on';
+    addSystem(`DEMO MODE — fake chat. Switch to "Mod view" to see what gets held, hidden and deleted. (${settings.delay}s delay)`);
+    updateStatusLine();
+    const users = [
+      ['coolviewer22', ''], ['xX_Gamer_Xx', 'subscriber/3'], ['pickaxe_pete', ''],
+      ['ModMandy', 'moderator/1'], ['lurker_larry', ''], ['VIPvince', 'vip/1'],
+      ['sneaky_sam', ''], ['diamond_dana', 'subscriber/12'],
+    ];
+    const lines = [
+      [0, 'W stream'], [1, 'how much money do you have now'], [2, 'that build is insane'],
+      [4, 'LUL'], [7, 'gg'], [2, 'when are you doing the casino'], [0, 'you have 10,000 coins lets go'],
+      [1, 'first time catching the stream!'], [7, 'the music is a vibe'],
+      // spoilers that the filter catches
+      [6, 'BEHIND YOU'], [6, 'b3h1nd u'], [2, 'theyre coming to raid'], [4, 'he is at 1240, -380'],
+      [6, '👀👀👀'], [1, 'getting warmer...'], [0, 'turn around lol'], [6, 'check his pov twitch.tv/someone'],
+      [6, 'dont go in the tunnel'],
+      // sneaky ones the filter doesn't catch — the demo "mod" deletes these
+      [6, 'i would not open that door if i were you', 'del'], [4, 'hmm interesting choice to stay here', 'del'],
+      // mod & VIP chat (trusted)
+      [3, 'reminder: no backseating or snipe hints, you will be timed out'], [5, 'this is so tense haha'],
+    ];
+    const gen = connectGen;
+    demoTimer = setInterval(() => {
+      if (gen !== connectGen) return;
+      const [u, text, del] = lines[Math.floor(Math.random() * lines.length)];
+      const [login, badges] = users[u];
+      const id = 'demo-' + (++seq);
+      handleLine(`@badges=${badges};display-name=${login};id=${id};user-id=${login};mod=${badges.startsWith('moderator') ? 1 : 0} :${login.toLowerCase()}!x@x PRIVMSG #demo :${text}`);
+      if (del) {
+        const after = Math.min(settings.delay * 1000 * 0.5, 4000) + 500;
+        setTimeout(() => { if (gen === connectGen) handleLine(`@target-msg-id=${id} :tmi.twitch.tv CLEARMSG #demo :${text}`); }, after);
+      }
+    }, 1200);
+  }
+
+  // ------------------------------------------------------------------
+  // Lockdown
+  // ------------------------------------------------------------------
+  function setLockdown(on) {
+    settings.lockdown = on;
+    saveSettings();
+    document.getElementById('lockBtn').classList.toggle('on', on);
+    document.getElementById('lockBtn').textContent = on ? '🔓 End lockdown' : '🔒 Lockdown';
+    document.getElementById('lockBanner').classList.toggle('show', on);
+  }
+
+  // ------------------------------------------------------------------
+  // Settings UI wiring
+  // ------------------------------------------------------------------
+  const $ = id => document.getElementById(id);
+  const inputs = {
+    sChannel: 'channel', sDelay: 'delay', sMode: 'mode', sTrustBypass: 'trustBypass',
+    sCoords: 'blockCoords', sLinks: 'blockLinks', sShowCount: 'showHiddenCount',
+    sWords: 'words', sNames: 'names', sAllow: 'allow', sBlock: 'block', sFont: 'fontSize',
+  };
+
+  function fillForm() {
+    for (const [id, key] of Object.entries(inputs)) {
+      const el = $(id);
+      if (el.type === 'checkbox') el.checked = !!settings[key];
+      else el.value = settings[key];
+    }
+    applyFont();
+  }
+
+  function applyFont() {
+    document.documentElement.style.setProperty('--fs', settings.fontSize + 'px');
+    $('fontVal').textContent = settings.fontSize;
+  }
+
+  for (const [id, key] of Object.entries(inputs)) {
+    const el = $(id);
+    const evt = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
+    el.addEventListener(evt, () => {
+      if (el.type === 'checkbox') settings[key] = el.checked;
+      else if (key === 'delay') settings[key] = clampDelay(el.value);
+      else if (key === 'fontSize') settings[key] = +el.value;
+      else settings[key] = el.value;
+      if (key === 'fontSize') applyFont();
+      compileFilters();
+      saveSettings();
+      updateStatusLine();
+    });
+  }
+  $('sChannel').addEventListener('keydown', e => { if (e.key === 'Enter') { connect(); } });
+  $('connectBtn').addEventListener('click', () => {
+    connect();
+    if (window.innerWidth <= 700) $('settings').classList.remove('open');
+  });
+  $('resetWords').addEventListener('click', () => {
+    if (!confirm('Replace your spoiler word list with the default one?')) return;
+    settings.words = DEFAULT_WORDS.join('\n');
+    $('sWords').value = settings.words;
+    compileFilters();
+    saveSettings();
+  });
+  $('settingsBtn').addEventListener('click', () => $('settings').classList.toggle('open'));
+  $('tabStreamer').addEventListener('click', () => showView('streamer'));
+  $('tabMod').addEventListener('click', () => showView('mod'));
+  $('lockBtn').addEventListener('click', () => setLockdown(!settings.lockdown));
+
+  document.addEventListener('keydown', e => {
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'l' || e.key === 'L') setLockdown(!settings.lockdown);
+  });
+
+  function shareLink(forView) {
+    const p = new URLSearchParams();
+    p.set('channel', settings.channel);
+    p.set('delay', settings.delay);
+    p.set('mode', settings.mode);
+    p.set('bypass', settings.trustBypass ? '1' : '0');
+    p.set('coords', settings.blockCoords ? '1' : '0');
+    p.set('links', settings.blockLinks ? '1' : '0');
+    if (settings.words !== DEFAULT_WORDS.join('\n')) p.set('words', settings.words);
+    if (settings.names) p.set('names', settings.names);
+    if (settings.allow) p.set('allow', settings.allow);
+    if (settings.block) p.set('block', settings.block);
+    if (forView === 'mod') p.set('view', 'mod');
+    return location.origin + location.pathname + '?' + p.toString();
+  }
+
+  async function copyLink(forView) {
+    const link = shareLink(forView);
+    let ok = false;
+    try { await navigator.clipboard.writeText(link); ok = true; } catch (e) { /* fall through */ }
+    if (!ok) prompt('Copy this link:', link);
+    $('copiedMsg').textContent = ok ? 'Copied!' : '';
+    setTimeout(() => { $('copiedMsg').textContent = ''; }, 2000);
+  }
+  $('copyStreamer').addEventListener('click', () => copyLink('streamer'));
+  $('copyMod').addEventListener('click', () => copyLink('mod'));
+
+  // ------------------------------------------------------------------
+  // Start
+  // ------------------------------------------------------------------
+  compileFilters();
+  fillForm();
+  setLockdown(!!settings.lockdown);
+  showView(view);
+  setInterval(tick, 250);
+  if (settings.channel) connect();
+  else $('settings').classList.add('open');
+
+  // exposed for testing in the browser console
+  window.snipeShield = { handleLine, spoilerReason, normalize, looksLikeCoords };
+})();
+</script>
+</body>
+</html>
